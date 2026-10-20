@@ -1,0 +1,654 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Snap a TradingView chart and get a trade ticket checked against your own trading rules.">
+<title>Chart Read Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..700&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: quiet two-pane desk — capture on the left (settings + journal tucked into drawers), the trade ticket on the right; stacks on phones. */
+:root {
+  --bg: #f3f5f8;
+  --panel: #ffffff;
+  --sunk: #f0f3f7;
+  --ink: #18212d;
+  --muted: #687586;
+  --line: #e3e8ee;
+  --accent: #2a5bd7;
+  --long: #13804f;
+  --short: #c43d2e;
+  --flat: #91700f;
+  --long-soft: #e6f4ec;
+  --short-soft: #fbe9e6;
+  --flat-soft: #f8f1dc;
+  --accent-soft: #e8eefc;
+  --shadow: 0 1px 2px rgba(24, 33, 45, .04), 0 6px 24px rgba(24, 33, 45, .06);
+  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "Geist Mono", ui-monospace, Consolas, monospace;
+  --ease: cubic-bezier(.2, .7, .2, 1);
+  --r: 14px;
+  interpolate-size: allow-keywords;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f141b; --panel: #161d27; --sunk: #1c2430; --ink: #e6ebf2; --muted: #8e9bad; --line: #253041;
+  --accent: #82a5ff; --long: #50c890; --short: #ff7d6d; --flat: #e2b84d;
+  --long-soft: #15302a; --short-soft: #371e1e; --flat-soft: #322919; --accent-soft: #1c2945;
+  --shadow: 0 0 0 1px #212b39, 0 8px 28px rgba(0, 0, 0, .25);
+  color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f141b; --panel: #161d27; --sunk: #1c2430; --ink: #e6ebf2; --muted: #8e9bad; --line: #253041;
+  --accent: #82a5ff; --long: #50c890; --short: #ff7d6d; --flat: #e2b84d;
+  --long-soft: #15302a; --short-soft: #371e1e; --flat-soft: #322919; --accent-soft: #1c2945;
+  --shadow: 0 0 0 1px #212b39, 0 8px 28px rgba(0, 0, 0, .25);
+  color-scheme: dark }
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { background: var(--bg); color: var(--ink); font: 15.5px/1.6 var(--f-body); -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header { margin-bottom: 24px; }
+h1 { font: 700 2.1rem/1.05 var(--f-display); letter-spacing: -.02em; margin: 0 0 4px; text-wrap: balance; }
+h1 span { color: var(--accent); }
+.sub { color: var(--muted); margin: 0; max-width: 62ch; }
+h2 { font: 600 .7rem/1 var(--f-body); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin: 0 0 10px; }
+.grid { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+@media (min-width: 861px) { .col.side { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); } }
+.panel { background: var(--panel); border-radius: var(--r); padding: 20px; min-width: 0; box-shadow: var(--shadow); }
+
+/* drop zone */
+.drop { position: relative; border: 1.5px dashed var(--line); border-radius: 10px; min-height: 168px; padding: 16px; text-align: center; cursor: pointer;
+  display: grid; place-items: center; background: var(--sunk); overflow: hidden;
+  transition: border-color .2s var(--ease), background-color .2s var(--ease), transform .2s var(--ease); }
+.drop:hover, .drop.over, .drop:focus-visible { border-color: var(--accent); background: var(--accent-soft); outline: none; }
+.drop.over { transform: scale(1.01); }
+.drop.has { border-style: solid; padding: 6px; background: var(--panel); }
+.drop img { max-height: 260px; border-radius: 7px; object-fit: contain; animation: fade .35s var(--ease); }
+.drop .hint { color: var(--muted); font-size: .92rem; display: grid; gap: 6px; justify-items: center; }
+.drop .hint svg { width: 28px; height: 28px; color: var(--accent); }
+.drop .hint b { color: var(--ink); font-weight: 600; }
+.replace { position: absolute; right: 10px; bottom: 10px; font-size: .78rem; padding: 4px 10px; border-radius: 99px; background: var(--panel); color: var(--ink); box-shadow: var(--shadow); }
+
+.fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.fields .full { grid-column: 1 / -1; }
+label { display: grid; gap: 5px; font-size: .8rem; font-weight: 500; color: var(--muted); min-width: 0; }
+input, select, textarea { font: 400 .95rem var(--f-body); color: var(--ink); background: var(--sunk); border: 1px solid transparent; border-radius: 8px; padding: 9px 11px; width: 100%;
+  transition: border-color .15s, background-color .15s, box-shadow .15s; }
+input[type=number] { font-family: var(--f-mono); font-size: .9rem; }
+input:hover, select:hover, textarea:hover { border-color: var(--line); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); background: var(--panel); box-shadow: 0 0 0 3px var(--accent-soft); }
+textarea { resize: vertical; min-height: 44px; }
+
+button { font: 600 .95rem var(--f-body); border-radius: 9px; padding: 11px 16px; border: 0; background: var(--sunk); color: var(--ink); cursor: pointer;
+  transition: background-color .15s, transform .12s var(--ease), opacity .2s, box-shadow .2s; }
+button:hover:not(:disabled) { filter: brightness(1.04); }
+button:active:not(:disabled) { transform: scale(.98); }
+button:focus-visible, .drawer summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.primary { background: var(--accent); color: var(--panel); flex: 1; box-shadow: 0 4px 14px -6px var(--accent); }
+button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+.btnrow { display: flex; gap: 8px; margin-top: 16px; }
+.status { font-size: .88rem; color: var(--muted); min-height: 1.3em; margin-top: 10px; transition: color .2s; }
+.status:empty { margin-top: 0; min-height: 0; }
+.status.err { color: var(--short); }
+
+/* drawers (settings, journal) */
+.drawer { padding: 0; }
+.drawer summary { list-style: none; cursor: pointer; padding: 16px 20px; display: flex; align-items: center; gap: 10px; border-radius: var(--r); }
+.drawer summary::-webkit-details-marker { display: none; }
+.drawer summary .t { font: 600 .7rem/1 var(--f-body); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.drawer summary .s { margin-left: auto; font: 500 .82rem var(--f-mono); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.drawer summary .chev { width: 14px; height: 14px; color: var(--muted); flex: none; transition: transform .25s var(--ease); }
+.drawer[open] summary .chev { transform: rotate(180deg); }
+.drawer .body { padding: 0 20px 20px; }
+.drawer::details-content { block-size: 0; overflow: clip; transition: block-size .3s var(--ease), content-visibility .3s allow-discrete; }
+.drawer[open]::details-content { block-size: auto; }
+
+/* ticket */
+.ticket { min-height: 320px; }
+.ticket.enter > * { animation: rise .45s var(--ease) both; }
+.ticket.enter > *:nth-child(2) { animation-delay: .05s; } .ticket.enter > *:nth-child(3) { animation-delay: .1s; }
+.ticket.enter > *:nth-child(4) { animation-delay: .15s; } .ticket.enter > *:nth-child(5) { animation-delay: .2s; }
+.ticket.enter > *:nth-child(n+6) { animation-delay: .25s; }
+.ticket > * + * { margin-top: 20px; }
+.ticket-head { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-start; justify-content: space-between; }
+.ticket-head > div { min-width: 0; }
+.verdict { font: 700 1.3rem/1 var(--f-display); letter-spacing: .02em; padding: 10px 18px; border-radius: 99px; white-space: nowrap; }
+.v-LONG { color: var(--long); background: var(--long-soft); }
+.v-SHORT { color: var(--short); background: var(--short-soft); }
+.v-NO { color: var(--flat); background: var(--flat-soft); }
+.setup { font: 600 1.3rem/1.25 var(--f-display); letter-spacing: -.01em; margin: 0 0 4px; text-wrap: balance; }
+.meta { color: var(--muted); font-size: .88rem; }
+.tag { display: inline-block; vertical-align: middle; font: 600 .68rem var(--f-body); letter-spacing: .04em; padding: 3px 9px; border-radius: 99px; margin-left: 6px; }
+.tag.example { color: var(--flat); background: var(--flat-soft); }
+.banner { background: var(--flat-soft); color: var(--ink); padding: 12px 14px; border-radius: 10px; font-size: .92rem; }
+
+.levels { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 560px) { .levels { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.lv { background: var(--sunk); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+.lv b { display: block; font: 600 .66rem var(--f-body); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+.lv span { font: 500 1.15rem var(--f-mono); letter-spacing: -.02em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.lv small { display: block; color: var(--muted); font-size: .78rem; line-height: 1.35; margin-top: 4px; }
+.lv.stop span { color: var(--short); } .lv.tgt span { color: var(--long); }
+
+/* reward:risk bar */
+.rr { display: grid; gap: 6px; }
+.rrbar { display: flex; height: 8px; border-radius: 99px; overflow: hidden; background: var(--sunk); }
+.rrbar i { display: block; height: 100%; transform-origin: left; animation: grow .7s var(--ease) both .15s; }
+.rrbar .risk { background: var(--short); opacity: .85; }
+.rrbar .rew { background: var(--long); opacity: .85; }
+.rrbar .rew2 { background: var(--long); opacity: .4; }
+.rrlab { display: flex; justify-content: space-between; font: 500 .78rem var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+@media (max-width: 640px) { .cols2 { grid-template-columns: 1fr; } }
+.cols2 > div { min-width: 0; display: grid; gap: 20px; align-content: start; }
+ul.list { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: .95rem; }
+.why li::marker { color: var(--long); } .against li::marker { color: var(--short); }
+.check { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; font-size: .92rem; }
+.check li { display: grid; grid-template-columns: 20px 1fr; gap: 8px; align-items: start; }
+.dot { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: .7rem; font-weight: 700; margin-top: 1px; background: var(--sunk); color: var(--muted); }
+.dot.ok { background: var(--long-soft); color: var(--long); } .dot.bad { background: var(--short-soft); color: var(--short); }
+.size { font-family: var(--f-mono); font-variant-numeric: tabular-nums; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: .9rem; margin: 0; }
+.size dt { color: var(--muted); font-family: var(--f-body); } .size dd { margin: 0; text-align: right; }
+.size .big { font-size: 1.15rem; font-weight: 600; color: var(--ink); }
+.read p { margin: 0 0 8px; }
+.notes { display: flex; flex-wrap: wrap; gap: 6px; }
+.note { font-size: .8rem; padding: 4px 10px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); }
+hr.soft { border: 0; border-top: 1px solid var(--line); }
+
+/* loading skeleton */
+.sk { border-radius: 8px; background: linear-gradient(90deg, var(--sunk) 0%, var(--line) 50%, var(--sunk) 100%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+.loading-msg { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: .92rem; }
+.spinner { width: 16px; height: 16px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+
+/* journal */
+.journal table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.journal td, .journal th { padding: 8px 4px; border-bottom: 1px solid var(--line); text-align: left; }
+.journal tr:last-child td { border-bottom: 0; }
+.journal th { color: var(--muted); font-weight: 600; font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; }
+.journal td.num, .journal th.num { font-family: var(--f-mono); text-align: right; font-variant-numeric: tabular-nums; }
+.journal select { padding: 4px 6px; font-size: .8rem; width: auto; }
+.scroll { overflow-x: auto; }
+.foot { color: var(--muted); font-size: .8rem; margin-top: 28px; max-width: 80ch; line-height: 1.5; }
+
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+body { margin: 0; } img { max-width: 100%; } [hidden] { display: none !important; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.keyrow { display: flex; gap: 8px; }
+.keyrow input { flex: 1; min-width: 0; font-family: var(--f-mono); font-size: .85rem; }
+.keyrow button { padding: 8px 12px; font-size: .85rem; }
+a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>Chart Read <span>Desk</span></h1>
+    <p class="sub">Snap or upload a TradingView chart. It is read against your Trade vault rules and turned into a trade ticket, or a reason to stay flat.</p>
+  </header>
+
+  <div class="grid">
+    <div class="col side">
+      <section class="panel">
+        <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose or drop a chart screenshot">
+          <img id="preview" alt="Chart preview" hidden>
+          <div class="hint" id="dropHint">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h3l2-2.5h6L17 7h3v12H4z"/><circle cx="12" cy="13" r="3.6"/></svg>
+            <b>Take a photo or pick a screenshot</b>
+            <span>or drop / paste an image here</span>
+          </div>
+          <span class="replace" id="replace" hidden>Replace</span>
+        </div>
+        <input type="file" id="file" accept="image/png,image/jpeg,image/webp,image/gif" capture="environment" hidden>
+        <div class="fields" style="margin-top:16px">
+          <label>Ticker<input id="ticker" placeholder="auto"></label>
+          <label>Timeframe<input id="tf" placeholder="auto"></label>
+          <label class="full">Context<textarea id="ctx" rows="1" placeholder="optional, e.g. 10:05 ET, SPY red today"></textarea></label>
+        </div>
+        <div class="btnrow">
+          <button class="primary" id="go" disabled>Find the trade</button>
+          <button id="stop" hidden>Stop</button>
+        </div>
+        <div class="status" id="status" aria-live="polite"></div>
+      </section>
+
+      <details class="panel drawer" id="keyDrawer">
+        <summary><span class="t">Claude connection</span><span class="s" id="keySum"></span><svg class="chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></summary>
+        <div class="body" style="display:grid;gap:10px">
+          <label for="apiKey">Anthropic API key</label>
+          <div class="keyrow"><input id="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-..."><button id="forgetKey" type="button">Forget</button></div>
+          <p class="meta" style="margin:0">Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. It is saved only in this browser and sent only to Anthropic's API. Each chart read costs roughly 5–15 cents of API credit.</p>
+        </div>
+      </details>
+
+      <details class="panel drawer" id="rulesDrawer">
+        <summary><span class="t">Risk rules</span><span class="s" id="rulesSum"></span><svg class="chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></summary>
+        <div class="body">
+          <div class="fields">
+            <label>Account equity ($)<input id="equity" type="number" min="0" step="100" value="25000"></label>
+            <label>Risk per trade (%)<input id="riskPct" type="number" min="0.05" max="5" step="0.05" value="1"></label>
+            <label>Min reward:risk<input id="minRR" type="number" min="1" step="0.5" value="2"></label>
+            <label>Daily loss limit (R)<input id="dayLimit" type="number" min="1" step="1" value="3"></label>
+            <label>Market<select id="market"><option>US stocks</option><option>Futures</option><option>Crypto</option><option>Forex</option></select></label>
+            <label>Account<select id="acct"><option value="margin25">Margin, $25k+</option><option value="marginSmall">Margin, under $25k</option><option value="cash">Cash account</option></select></label>
+            <label class="full">Today's realised P&amp;L (R)<input id="todayR" type="number" step="0.5" value="0"></label>
+          </div>
+        </div>
+      </details>
+
+      <details class="panel drawer journal" id="journalDrawer">
+        <summary><span class="t">Journal</span><span class="s" id="jsum"></span><svg class="chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></summary>
+        <div class="body">
+          <p class="meta" style="margin:0 0 10px">Each read is logged in this browser. Set the outcome in R to build your win rate and payoff ratio.</p>
+          <div class="scroll"><table id="jt"><thead><tr><th>When</th><th>Chart</th><th>Call</th><th class="num">R:R</th><th>Result</th></tr></thead><tbody></tbody></table></div>
+          <div class="meta" id="jstats" style="margin-top:10px"></div>
+        </div>
+      </details>
+    </div>
+
+    <div class="col">
+      <section class="panel ticket" id="ticket" aria-live="polite"></section>
+    </div>
+  </div>
+
+  <p class="foot">This tool applies the rules in your own notes to a picture of a chart. It is not financial advice, it cannot see the live order book, and prices read off a screenshot can be wrong. Check every level on the live chart before placing an order. Per your vault: patterns are probabilistic, a setup without an invalidation point is not a setup, and the stop distance decides the size. Your API key and journal stay in this browser.</p>
+</div>
+
+<script type="module">
+import Anthropic from "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm";
+(() => {
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+};
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ---------- Playbook distilled from the Trade vault ---------- */
+const PLAYBOOK = `
+TRADE VAULT PLAYBOOK (the user's own notes; apply these, do not invent other systems)
+
+Core stance
+- Patterns Are Probabilistic: every chart pattern is a hypothesis with an invalidation point, never a rule price must obey. Failure is normal. Expectancy comes from reward:risk, not from the pattern being reliable.
+- Confirmation Bias in Charting: state what would prove the idea WRONG. A setup with no articulable invalidation is not a setup.
+- Why Edges Exist: prefer setups with a reason (trend persistence from slow information diffusion/institutional flow; forced/structural flow; behavioural over-reaction for reversion).
+- Trading Psychology Rewire: a profitable trade taken outside the rules is a bad trade. "No trade" is a valid, often correct, answer.
+
+Setups the vault covers (name the one you use)
+- Market Structure / Change of Character (CHoCH): HH/HL = uptrend, LH/LL = downtrend. CHoCH = first break of the swing sequence (e.g. break below the last higher low). Most objective of the chart methods - weight it highest.
+- Support & Resistance: static horizontal levels, dynamic S/R (moving averages), supply/demand ZONES. A zone needs room before calling it broken.
+- Breakout patterns: triangle, flag, rectangle, wedge. Trade the break of the boundary; the pattern itself defines invalidation. Reversal: double/triple top/bottom.
+- Fair Value Gaps: 3-candle imbalance gap; price may return to fill it - use as an entry zone, not a guarantee.
+- Fibonacci retracement: swing low to swing high, 0.382/0.5/0.618/0.786. Wait for a pullback into a level rather than chasing the initial move.
+- Candlestick patterns (engulfing, hammer, shooting star): weak alone; only meaningful AT a key level. Context > candle.
+- Trend lines / Gann angles: anchoring is a choice; low weight.
+- Indicators: moving averages (trend / dynamic S&R), Parabolic SAR (trailing stop), stochastics, divergence (price new extreme, oscillator fails), volume (strength behind the move), volume profile. Indicators only reshape price/volume - confirmation, not a reason alone.
+- VWAP: session-anchored, resets daily. Above VWAP with rising structure favours longs; below favours shorts; VWAP is a common reclaim/reject level and mean-reversion reference.
+- Opening Range Breakout (ORB): break of the high/low of the first minutes of the regular session, entered with a STOP order; best with relative strength vs SPY/QQQ.
+- Mean reversion (z-score from a moving average/VWAP): high win rate, small wins, occasional large losses - REQUIRES a hard stop.
+- Trend following / momentum: low win rate (30-40%), large winners; needs high R:R.
+- Elliott Wave and harmonic patterns: weakest claims in the vault - never the sole basis. Moon phases: no mechanism, ignore.
+- Heikin Ashi / Renko charts: do NOT show real price. If the screenshot is one of these, say so and warn that levels must be checked on a normal candle chart.
+
+Risk and execution rules
+- Stop goes where the idea is proven wrong (beyond the structure level/zone), optionally sized with ATR - never placed to fit a desired size.
+- Position size Q = equity x risk% / |entry - stop| (the page computes this).
+- Win Rate x Reward Ratio matrix: E = W*R - (1-W). 1:1 needs >50% wins; 2:1 needs >33%; 3:1 needs >25%. Prefer targets at the next real level that give at least the user's minimum R:R. If the nearest opposing level gives less than the minimum, the answer is NO TRADE (or wait for a better entry).
+- Order types: limit order for pullback entries into a level (price guaranteed, fill not); stop order for breakout entries (fill guaranteed, price not - slippage).
+- Session Effects: spreads widest and volatility highest at the open; lunch is thin. Gaps: stops do not protect across a gap - day trades should be flat by the close (Overnight Risk).
+- Scalping: tiny targets get eaten by spread/fees - avoid targets of a few ticks.
+- Risk Limits / Revenge Trading: if today's loss has hit the daily limit, the answer is NO TRADE regardless of the chart.
+- Pattern Day Trader Rule: margin accounts under $25k are limited to 3 day trades in 5 business days.
+`;
+
+const SCHEMA = `Reply with ONLY one JSON object, no other text, in exactly this shape:
+{
+ "readable": true,                       // false if the image is not a price chart or is unreadable
+ "ticker": "string or null", "timeframe": "string or null",
+ "chart_type": "candles | heikin_ashi | renko | line | other",
+ "last_price": number or null,           // the current/last price shown on the chart
+ "chart_read": "2-4 short sentences: trend, market structure (HH/HL etc), where price sits vs key levels/VWAP/MAs, volume",
+ "key_levels": [{"price": number, "kind": "support|resistance|vwap|ma|fvg|fib|range_high|range_low", "note": "short"}],
+ "verdict": "LONG | SHORT | NO TRADE",
+ "setup": "name of the vault setup used, or why there is no trade",
+ "entry": number or null, "entry_order": "limit | stop | market | null",
+ "entry_trigger": "what must happen before entering, in one sentence",
+ "stop": number or null,
+ "invalidation": "the price action that proves the idea wrong",
+ "targets": [{"price": number, "reason": "short"}],
+ "why": ["2-4 reasons for, each citing what you see"],
+ "against": ["2-4 things that argue against it or could go wrong"],
+ "alternative": "the opposite scenario, or what would make you take the other side / re-enter",
+ "vault_notes": ["names of the vault notes this relies on, e.g. Market Structure and Change of Character"],
+ "confidence": "low | medium | high",
+ "price_reading_caveat": "one sentence on how sure you are of the prices read from the image"
+}
+Prices must be read from the chart's price axis; if you cannot read exact prices, estimate and say so in price_reading_caveat. For NO TRADE you may still give the levels and what setup you would wait for in entry_trigger, with entry/stop/targets null or as the conditional plan.`;
+
+function buildPrompt(s) {
+  return `You are reading a screenshot of a trading chart (usually TradingView, possibly a phone photo of a screen) for an intraday day trader. Identify the single best trade available right now under the trader's own rulebook below, or say NO TRADE if nothing meets the rules. Be conservative: an unclear chart, a mid-range price with no level nearby, or reward:risk below the minimum means NO TRADE.
+
+${PLAYBOOK}
+
+Trader settings
+- Market: ${s.market}. Account: ${s.acctLabel}. Equity $${s.equity}, risk ${s.riskPct}% per trade.
+- Minimum reward:risk to first target: ${s.minRR}:1.
+- Today's realised P&L: ${s.todayR}R; daily loss limit: -${s.dayLimit}R.${s.limitHit ? " THE DAILY LOSS LIMIT HAS BEEN HIT - verdict must be NO TRADE." : ""}
+- Ticker given by trader: ${s.ticker || "not given, read it from the chart"}. Timeframe: ${s.tf || "read it from the chart"}.
+- Extra context: ${s.ctx || "none"}
+
+${SCHEMA}`;
+}
+
+/* ---------- Pure maths (from Position Sizing Formula + Win Rate matrix) ---------- */
+function plan(t, s) {
+  if (t.entry == null || t.stop == null) return null;
+  const risk = Math.abs(t.entry - t.stop);
+  if (!(risk > 0)) return null;
+  const long = t.verdict === "LONG" ? true : t.verdict === "SHORT" ? false : t.stop < t.entry;
+  const dollars = s.equity * s.riskPct / 100;
+  const qty = Math.floor(dollars / risk);
+  const tg = (t.targets || []).filter(x => typeof x.price === "number").map(x => ({
+    ...x, r: (long ? x.price - t.entry : t.entry - x.price) / risk
+  }));
+  const r1 = tg.length ? tg[0].r : null;
+  return { risk, dollars, qty, notional: qty * t.entry, targets: tg, r1, long,
+    breakEvenWin: r1 && r1 > 0 ? 1 / (1 + r1) : null,
+    stopWrongSide: long ? t.stop >= t.entry : t.stop <= t.entry };
+}
+
+/* ---------- Settings ---------- */
+const settingIds = ["equity","riskPct","minRR","dayLimit","market","acct","todayR"];
+const saved = store.get("crd.settings", {});
+settingIds.forEach(id => { if (saved[id] != null) $(id).value = saved[id]; $(id).addEventListener("change", saveSettings); });
+function saveSettings() { const o = {}; settingIds.forEach(id => o[id] = $(id).value); store.set("crd.settings", o); updateRulesSum(); if (current) render(current.t, current.meta, false); }
+function settings() {
+  const acct = $("acct");
+  const s = { equity: +$("equity").value || 0, riskPct: +$("riskPct").value || 0, minRR: +$("minRR").value || 1,
+    dayLimit: +$("dayLimit").value || 3, todayR: +$("todayR").value || 0, market: $("market").value,
+    acct: acct.value, acctLabel: acct.options[acct.selectedIndex].text,
+    ticker: $("ticker").value.trim(), tf: $("tf").value.trim(), ctx: $("ctx").value.trim() };
+  s.limitHit = s.todayR <= -s.dayLimit;
+  return s;
+}
+function updateRulesSum() { const s = settings(); $("rulesSum").textContent = `$${s.equity.toLocaleString()} · ${s.riskPct}% · ${s.minRR}:1`; }
+
+/* ---------- Image intake ---------- */
+let blob = null;
+function setImage(f) {
+  if (!f || !/^image\//.test(f.type)) { status("That file is not an image. Use a PNG or JPG screenshot.", true); return; }
+  blob = f;
+  const img = $("preview"); img.src = URL.createObjectURL(f); img.hidden = false;
+  $("dropHint").hidden = true; $("replace").hidden = false; $("drop").classList.add("has");
+  status(""); refreshGo();
+}
+$("drop").addEventListener("click", () => $("file").click());
+$("drop").addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } });
+$("file").addEventListener("change", e => setImage(e.target.files[0]));
+["dragover","dragenter"].forEach(ev => $("drop").addEventListener(ev, e => { e.preventDefault(); $("drop").classList.add("over"); }));
+["dragleave","drop"].forEach(ev => $("drop").addEventListener(ev, () => $("drop").classList.remove("over")));
+$("drop").addEventListener("drop", e => { e.preventDefault(); setImage(e.dataTransfer.files[0]); });
+document.addEventListener("paste", e => { const it = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith("image/")); if (it) setImage(it.getAsFile()); });
+const ctxBox = $("ctx");
+ctxBox.addEventListener("input", () => { ctxBox.style.height = "auto"; ctxBox.style.height = ctxBox.scrollHeight + 2 + "px"; });
+
+function status(msg, err) { const el = $("status"); el.textContent = msg; el.className = "status" + (err ? " err" : ""); }
+
+/* ---------- Claude API ---------- */
+const MODEL = "claude-opus-5-5";
+let ctl = null;
+const keyBox = $("apiKey");
+keyBox.value = store.get("crd.key", "");
+const hasKey = () => keyBox.value.trim().length > 20;
+function refreshGo() { $("go").disabled = !(blob && hasKey()); $("keySum").textContent = hasKey() ? "key saved" : "add your key"; }
+keyBox.addEventListener("input", () => { store.set("crd.key", keyBox.value.trim()); refreshGo(); });
+$("forgetKey").addEventListener("click", () => { keyBox.value = ""; store.set("crd.key", ""); refreshGo(); });
+refreshGo();
+if (!hasKey()) { $("keyDrawer").open = true; status("Add your Anthropic API key under Claude connection to start reading charts. The example ticket shows what you get."); }
+
+const toBase64 = (b) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(b); });
+// Shrink large phone photos so the request stays small; the API downsizes anything bigger anyway.
+async function prepImage(f) {
+  const bmp = await createImageBitmap(f).catch(() => null);
+  if (!bmp) return { media_type: f.type, data: await toBase64(f) };
+  const sc = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(bmp.width * sc); c.height = Math.round(bmp.height * sc);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  const out = await new Promise(r => c.toBlob(r, "image/jpeg", 0.9));
+  return { media_type: "image/jpeg", data: await toBase64(out) };
+}
+function parseJson(text) {
+  try { return JSON.parse(text); } catch {}
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) { try { return JSON.parse(fence[1]); } catch {} }
+  const i = text.indexOf("{"), j = text.lastIndexOf("}");
+  if (i >= 0 && j > i) { try { return JSON.parse(text.slice(i, j + 1)); } catch {} }
+  throw { code: "invalid_json" };
+}
+async function readChart(prompt, file, signal) {
+  const client = new Anthropic({ apiKey: keyBox.value.trim(), dangerouslyAllowBrowser: true });
+  const img = await prepImage(file);
+  const params = {
+    model: MODEL, max_tokens: 32000,
+    thinking: { type: "adaptive" },
+    output_config: { effort: "high" },
+    betas: ["server-side-fallback-2026-07-01"], fallbacks: "default",
+    messages: [{ role: "user", content: [
+      { type: "image", source: { type: "base64", media_type: img.media_type, data: img.data } },
+      { type: "text", text: prompt },
+    ] }],
+  };
+  let msg;
+  try {
+    msg = await client.beta.messages.stream(params, { signal }).finalMessage();
+  } catch (e) {
+    if (signal.aborted || e instanceof Anthropic.APIUserAbortError) throw { code: "cancelled" };
+    if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) throw { code: "bad_key" };
+    if (e instanceof Anthropic.RateLimitError) throw { code: "rate_limited" };
+    if (e instanceof Anthropic.BadRequestError) throw { code: "bad_request", message: e.message };
+    if (e instanceof Anthropic.APIConnectionError) throw { code: "network" };
+    throw { code: "upstream_error", message: e?.message };
+  }
+  if (msg.stop_reason === "refusal") throw { code: "refused" };
+  if (msg.stop_reason === "max_tokens") throw { code: "invalid_json" };
+  return parseJson(msg.content.filter(x => x.type === "text").map(x => x.text).join(""));
+}
+
+const ERR = {
+  bad_key: "Your API key was rejected. Check it under Claude connection.",
+  rate_limited: "Rate limit or credit limit reached on your Anthropic account. Try again in a minute, or add credit.",
+  network: "Couldn't reach the Claude API. Check your internet connection.",
+  invalid_json: "The answer came back in the wrong format. Press Find the trade again.",
+  refused: "Claude declined to read this image. Try a clearer chart screenshot.",
+};
+
+function showLoading() {
+  const el = $("ticket");
+  el.classList.remove("enter");
+  el.innerHTML = `
+    <div class="loading-msg"><span class="spinner"></span><span>Reading the chart against your vault. This takes about 20–60 seconds.</span></div>
+    <div style="display:flex;justify-content:space-between;gap:16px"><div style="flex:1;display:grid;gap:8px"><div class="sk" style="height:22px;width:60%"></div><div class="sk" style="height:14px;width:35%"></div></div><div class="sk" style="height:44px;width:120px;border-radius:99px"></div></div>
+    <div class="levels">${'<div class="sk" style="height:72px"></div>'.repeat(4)}</div>
+    <div class="sk" style="height:8px;border-radius:99px"></div>
+    <div class="cols2"><div><div class="sk" style="height:110px"></div></div><div><div class="sk" style="height:110px"></div></div></div>`;
+}
+
+$("go").addEventListener("click", async () => {
+  const s = settings();
+  ctl = new AbortController();
+  $("go").disabled = true; $("stop").hidden = false;
+  status(""); showLoading();
+  if (innerWidth <= 860) $("ticket").scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+  try {
+    const t = await readChart(buildPrompt(s), blob, ctl.signal);
+    if (!t || typeof t !== "object") throw { code: "invalid_json" };
+    if (s.limitHit) t.verdict = "NO TRADE";
+    const meta = { when: Date.now(), example: false };
+    current = { t, meta };
+    render(t, meta, true);
+    logEntry(t);
+  } catch (e) {
+    if (current) render(current.t, current.meta, true);
+    if (e?.code === "cancelled") status("Stopped.");
+    else status(ERR[e?.code] || ("Something went wrong reaching Claude." + (e?.message ? " " + e.message : " Try again.")), true);
+  } finally {
+    $("stop").hidden = true; refreshGo();
+  }
+});
+$("stop").addEventListener("click", () => ctl?.abort());
+
+/* ---------- Render ticket ---------- */
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const px = (n) => typeof n === "number" ? (Math.abs(n) >= 1000 ? n.toLocaleString(undefined,{maximumFractionDigits:2}) : +n.toFixed(n < 2 ? 5 : 2)) : "—";
+const money = (n) => "$" + Math.round(n).toLocaleString();
+let current = null;
+
+function rrBar(p) {
+  if (!p || !p.targets.length) return "";
+  const r1 = Math.max(0, p.targets[0].r), r2 = p.targets[1] ? Math.max(r1, p.targets[1].r) : r1;
+  const total = 1 + r2;
+  const w = (x) => (x / total * 100).toFixed(2) + "%";
+  return `<div class="rr" aria-label="Risk versus reward">
+    <div class="rrbar"><i class="risk" style="width:${w(1)}"></i><i class="rew" style="width:${w(r1)}"></i>${r2 > r1 ? `<i class="rew2" style="width:${w(r2 - r1)}"></i>` : ""}</div>
+    <div class="rrlab"><span>Stop −1R</span><span>Target ${r1.toFixed(2)}R${r2 > r1 ? ` · ${r2.toFixed(2)}R` : ""}</span></div>
+  </div>`;
+}
+
+function render(t, meta, animate) {
+  const s = settings();
+  const el = $("ticket");
+  if (t.readable === false) {
+    el.innerHTML = `<h2>Trade ticket</h2><div class="banner">This image does not look like a readable price chart. Try a screenshot with the price axis visible.</div>`;
+    return;
+  }
+  const p = plan(t, s);
+  let verdict = t.verdict || "NO TRADE";
+  const checks = [];
+  if (p) {
+    checks.push([!p.stopWrongSide, "Stop is on the losing side of entry"]);
+    checks.push([p.r1 != null && p.r1 >= s.minRR, `First target gives at least ${s.minRR}:1` + (p.r1 != null ? ` (${p.r1.toFixed(2)}:1)` : "")]);
+    checks.push([!!t.invalidation, "Invalidation is defined before entry"]);
+  }
+  checks.push([!s.limitHit, `Daily loss limit not hit (${s.todayR}R of −${s.dayLimit}R)`]);
+  if (!/candles|line/.test(t.chart_type || "candles")) checks.push([false, "Chart shows real prices (Heikin Ashi / Renko do not)"]);
+  if (s.acct === "marginSmall") checks.push([null, "Under $25k margin: max 3 day trades in 5 business days"]);
+  if (s.acct === "cash") checks.push([null, "Cash account: only settled funds can be reused"]);
+  const failed = checks.some(c => c[0] === false);
+  if (verdict !== "NO TRADE" && failed) verdict = "NO TRADE";
+  const vClass = verdict === "LONG" ? "v-LONG" : verdict === "SHORT" ? "v-SHORT" : "v-NO";
+  const downgraded = verdict === "NO TRADE" && t.verdict && t.verdict !== "NO TRADE";
+
+  const tg = p?.targets?.length ? p.targets : (t.targets || []).map(x => ({ ...x, r: null }));
+  el.innerHTML = `
+    <div class="ticket-head">
+      <div>
+        <h2>Trade ticket${meta.example ? '<span class="tag example">Example</span>' : ""}</h2>
+        <p class="setup">${esc(t.ticker || "Chart")}${t.timeframe ? " · " + esc(t.timeframe) : ""} — ${esc(t.setup || "")}</p>
+        <div class="meta">Confidence ${esc(t.confidence || "—")}${t.last_price != null ? " · Last ≈ " + px(t.last_price) : ""} · ${new Date(meta.when).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</div>
+      </div>
+      <div class="verdict ${vClass}">${esc(verdict)}</div>
+    </div>
+    ${downgraded ? `<div class="banner">Read as <b>${esc(t.verdict)}</b>, but it fails one of your rules, so the call is no trade. The plan below is the setup to wait for.</div>` : ""}
+    <div class="levels">
+      <div class="lv"><b>Entry${t.entry_order ? " · " + esc(t.entry_order) : ""}</b><span>${px(t.entry)}</span><small>${esc(t.entry_trigger || "")}</small></div>
+      <div class="lv stop"><b>Stop</b><span>${px(t.stop)}</span><small>${p ? "1R = " + px(p.risk) + " per unit" : ""}</small></div>
+      ${tg.slice(0, 2).map((x, i) => `<div class="lv tgt"><b>Target ${i + 1}</b><span>${px(x.price)}</span><small>${x.r != null ? "+" + x.r.toFixed(2) + "R · " : ""}${esc(x.reason || "")}</small></div>`).join("") || `<div class="lv tgt"><b>Target</b><span>—</span></div><div class="lv"><b>—</b><span>—</span></div>`}
+      ${tg.length === 1 ? `<div class="lv"><b>Break-even win rate</b><span>${p?.breakEvenWin ? Math.round(p.breakEvenWin * 100) + "%" : "—"}</span><small>at target 1</small></div>` : ""}
+    </div>
+    ${rrBar(p)}
+    <div class="cols2">
+      <div>
+        <div><h2>Why</h2><ul class="list why">${(t.why || []).map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>
+        <div><h2>Against it</h2><ul class="list against">${(t.against || []).map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>
+      </div>
+      <div>
+        <div><h2>Position size</h2>
+        ${p ? `<dl class="size">
+          <dt>Size</dt><dd class="big">${p.qty.toLocaleString()} ${s.market === "US stocks" ? "shares" : "units"}</dd>
+          <dt>Risk budget (${s.riskPct}%)</dt><dd>${money(p.dollars)}</dd>
+          <dt>Risk per unit</dt><dd>${px(p.risk)}</dd>
+          <dt>Notional</dt><dd>${money(p.notional)}</dd>
+          ${tg.length > 1 ? `<dt>Break-even win rate</dt><dd>${p.breakEvenWin ? Math.round(p.breakEvenWin * 100) + "%" : "—"}</dd>` : ""}
+        </dl>${s.market !== "US stocks" ? '<p class="meta" style="margin:8px 0 0">For futures, divide by the contract\'s point value; for leveraged crypto/FX, check margin.</p>' : ""}` : '<p class="meta" style="margin:0">No entry and stop to size.</p>'}</div>
+        <div><h2>Rule check</h2>
+        <ul class="check">${checks.map(([ok, txt]) => `<li><span class="dot ${ok === false ? "bad" : ok ? "ok" : ""}">${ok === false ? "✕" : ok ? "✓" : "i"}</span><span>${esc(txt)}</span></li>`).join("")}</ul></div>
+      </div>
+    </div>
+    <hr class="soft">
+    <div class="read">
+      <h2>Invalidation</h2><p>${esc(t.invalidation || "—")}</p>
+      <h2 style="margin-top:16px">Chart read</h2><p>${esc(t.chart_read || "")}</p>
+      ${t.alternative ? `<p><b>Other side:</b> ${esc(t.alternative)}</p>` : ""}
+      ${(t.key_levels || []).length ? `<p class="meta">Levels: ${(t.key_levels).map(l => `${px(l.price)} ${esc(l.kind)}`).join(" · ")}</p>` : ""}
+      ${t.price_reading_caveat ? `<p class="meta">${esc(t.price_reading_caveat)}</p>` : ""}
+    </div>
+    ${(t.vault_notes || []).length ? `<div><h2>From your vault</h2><div class="notes">${t.vault_notes.map(n => `<span class="note">${esc(n)}</span>`).join("")}</div></div>` : ""}
+  `;
+  if (animate) { el.classList.remove("enter"); void el.offsetWidth; el.classList.add("enter"); }
+  else el.classList.remove("enter");
+}
+
+/* ---------- Journal ---------- */
+function logEntry(t) {
+  const s = settings(); const p = plan(t, s);
+  const j = store.get("crd.journal", []);
+  j.unshift({ when: Date.now(), name: (t.ticker || "Chart") + (t.timeframe ? " " + t.timeframe : ""), call: t.verdict, rr: p?.r1 ?? null, outcome: "" });
+  store.set("crd.journal", j.slice(0, 200)); renderJournal();
+}
+function renderJournal() {
+  const j = store.get("crd.journal", []);
+  const tb = $("jt").querySelector("tbody");
+  if (!j.length) { tb.innerHTML = `<tr><td colspan="5" class="meta">No reads yet. Your first chart will appear here.</td></tr>`; $("jstats").textContent = ""; $("jsum").textContent = "empty"; return; }
+  const opts = ["", "skipped", "-1", "-0.5", "0", "1", "1.5", "2", "3", "4"];
+  tb.innerHTML = j.map((e, i) => `<tr><td>${new Date(e.when).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</td><td>${esc(e.name)}</td><td>${esc(e.call)}</td><td class="num">${e.rr != null ? e.rr.toFixed(1) : "—"}</td><td><select data-i="${i}" aria-label="Outcome in R">${opts.map(o => `<option value="${o}" ${String(e.outcome) === o ? "selected" : ""}>${o === "" ? "—" : o === "skipped" ? "skipped" : (+o > 0 ? "+" : "") + o + "R"}</option>`).join("")}</select></td></tr>`).join("");
+  const taken = j.filter(e => e.outcome !== "" && e.outcome !== "skipped").map(e => +e.outcome);
+  if (taken.length) {
+    const wins = taken.filter(r => r > 0), losses = taken.filter(r => r < 0);
+    const total = taken.reduce((a, b) => a + b, 0);
+    $("jstats").textContent = `${taken.length} trades · win rate ${Math.round(wins.length / taken.length * 100)}% · avg win ${wins.length ? (wins.reduce((a,b)=>a+b,0)/wins.length).toFixed(2) : "—"}R · avg loss ${losses.length ? (losses.reduce((a,b)=>a+b,0)/losses.length).toFixed(2) : "—"}R · expectancy ${(total / taken.length).toFixed(2)}R/trade` + (taken.length < 30 ? " · small sample, don't trust it yet" : "");
+    $("jsum").textContent = `${j.length} reads · ${total >= 0 ? "+" : ""}${total.toFixed(1)}R`;
+  } else { $("jstats").textContent = ""; $("jsum").textContent = `${j.length} read${j.length === 1 ? "" : "s"}`; }
+}
+$("jt").addEventListener("change", e => {
+  const i = e.target.dataset.i; if (i == null) return;
+  const j = store.get("crd.journal", []); j[i].outcome = e.target.value; store.set("crd.journal", j); renderJournal();
+});
+
+/* ---------- Example at rest ---------- */
+const EXAMPLE = {
+  readable: true, ticker: "AAPL", timeframe: "5m", chart_type: "candles", last_price: 231.42,
+  chart_read: "Opening drive higher made a higher high at 232.10, then pulled back in three candles to the rising session VWAP near 230.80. Structure is still HH/HL; the pullback held above the prior higher low at 230.35. Volume dried up on the pullback.",
+  key_levels: [{ price: 232.10, kind: "resistance", note: "morning high" }, { price: 230.80, kind: "vwap" }, { price: 230.35, kind: "support", note: "last higher low" }, { price: 233.40, kind: "resistance", note: "prior day high" }],
+  verdict: "LONG", setup: "VWAP pullback in an intact uptrend",
+  entry: 231.00, entry_order: "limit", entry_trigger: "Limit at 231.00 after a candle closes back above VWAP",
+  stop: 230.25, invalidation: "A 5m close below 230.35 breaks the last higher low, a change of character.",
+  targets: [{ price: 232.60, reason: "above morning high" }, { price: 233.40, reason: "prior day high" }],
+  why: ["Higher highs and higher lows intact since the open", "Pullback into VWAP on falling volume", "Room to the prior day high above"],
+  against: ["Morning high at 232.10 may cap the first push", "Lunch hours thin out follow-through"],
+  alternative: "Below 230.35 the structure flips; look for a short on a failed VWAP retest.",
+  vault_notes: ["Market Structure and Change of Character", "VWAP Mathematical Structure", "Limit Orders", "Position Sizing Formula"],
+  confidence: "medium", price_reading_caveat: "Example values for illustration."
+};
+current = { t: EXAMPLE, meta: { when: Date.now(), example: true } };
+updateRulesSum();
+render(EXAMPLE, current.meta, true);
+renderJournal();
+})();
+</script>
+</body>
+</html>
